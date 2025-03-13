@@ -1,13 +1,13 @@
-import os
 import yt_dlp
+import os
 
 class VideoDownloader:
     def __init__(self):
         pass
-    
+
     def download(self, url, quality, save_path, progress_callback=None):
         """
-        Download a YouTube video with the specified quality.
+        Download a YouTube video with the specified quality and enforce MP4 format.
         
         Args:
             url (str): YouTube video URL
@@ -19,39 +19,30 @@ class VideoDownloader:
             str: Path to the downloaded file
         """
         try:
-            # Configure yt-dlp options
+            # yt-dlp format selection for MP4
             ydl_opts = {
-                'format': f'bestvideo[height<={quality}]+bestaudio/best',  # Get the best video with the given quality
-                'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),  # Save as title of the video
+                'format': f'bestvideo[ext=mp4][height<={quality}]+bestaudio[ext=m4a]/best[ext=mp4]',
+                'merge_output_format': 'mp4',  # Ensure final file is MP4
+                'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),
                 'progress_hooks': [self._progress_hook(progress_callback)] if progress_callback else [],
             }
 
             # Ensure save path exists
             os.makedirs(save_path, exist_ok=True)
 
-            # Download the video using yt-dlp
+            # Download video using yt-dlp
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                result = ydl.download([url])
-
-            # Check if download was successful (result is an integer; 0 means success)
-            if result == 0:
-                return os.path.join(save_path, f'{ydl.prepare_filename(ydl.extract_info(url))}')
-            else:
-                raise Exception(f"Error downloading video: Download failed with status code {result}")
+                ydl.download([url])
 
         except Exception as e:
             print(f"Error downloading video: {e}")
             return None
 
     def _progress_hook(self, progress_callback):
-        """
-        Creates a progress hook for yt-dlp's download process.
-        Args:
-            progress_callback (function): Callback function to update progress.
-        """
+        """Handles progress updates for the download."""
         def progress_hook(d):
-            if d['status'] == 'downloading':
+            if d['status'] == 'downloading' and 'total_bytes' in d:
                 percent = int(d['downloaded_bytes'] * 100 / d['total_bytes'])
                 progress_callback(percent)
-        
+
         return progress_hook
