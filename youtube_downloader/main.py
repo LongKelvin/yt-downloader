@@ -5,7 +5,7 @@ from ui.main_window import MainWindow
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
-    # Khởi tạo cửa sổ chính
+    # Initialize the main window
     window = MainWindow()
     window.show()
     

@@ -1,5 +1,5 @@
-from datetime import timedelta
 import os
+import json
 from PyQt6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -15,126 +15,14 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QCheckBox,
     QMessageBox,
+    QApplication
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-
-import yt_dlp
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import timedelta
-
-import yt_dlp
+from PyQt6.QtCore import Qt
 
 
-from core.downloader import VideoDownloader
-from core.youtube_api import YouTubeAPI
 
-
-class DownloadThread(QThread):
-    progress_signal = pyqtSignal(int)
-    finished_signal = pyqtSignal(str)
-    error_signal = pyqtSignal(str)
-
-    def __init__(self, url, quality, save_path):
-        super().__init__()
-        self.url = url
-        self.quality = quality
-        self.save_path = save_path
-
-    def run(self):
-        try:
-            downloader = VideoDownloader()
-            downloader.download(
-                self.url,
-                self.quality,
-                self.save_path,
-                progress_callback=self.progress_signal.emit,
-            )
-            self.finished_signal.emit("Download completed!")
-        except Exception as e:
-            self.error_signal.emit(f"Error: {str(e)}")
-
-
-import yt_dlp
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import timedelta
-
-
-class YouTubeSearchWorker(QThread):
-    results_signal = pyqtSignal(list)  # Signal to return results
-    error_signal = pyqtSignal(str)  # Signal for errors
-
-    def __init__(self, query, max_results=5, parallel_searches=5, batch_size=5):
-        super().__init__()
-        self.query = query
-        self.max_results = max_results
-        self.parallel_searches = parallel_searches  # Number of parallel search requests
-        self.batch_size = batch_size  # Number of queries per batch to optimize
-
-    def run(self):
-        """Runs in a separate thread to avoid blocking the GUI."""
-        try:
-            ydl_opts = {
-                "quiet": True,
-                "no_warnings": True,
-                "skip_download": True,  # Don't download anything
-                "noplaylist": True,  # Ignore playlists
-                "extract_flat": True,  # Extract metadata only (faster)
-                "default_search": "ytsearch",  # Use optimized search method
-            }
-
-            search_query = f"ytsearch{self.max_results}:{self.query}"
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                with ThreadPoolExecutor(max_workers=self.parallel_searches) as executor:
-                    # Create batches of search queries
-                    queries = [
-                        f"ytsearch{self.max_results}:{self.query} {i}"
-                        for i in range(self.batch_size)
-                    ]
-
-                    future_to_query = {
-                        executor.submit(self._search, ydl, query): query
-                        for query in queries
-                    }
-                    results = []
-
-                    # Process search results as they complete
-                    for future in as_completed(future_to_query):
-                        info = future.result()
-                        if "entries" in info:
-                            for entry in info["entries"]:
-                                if not entry:
-                                    continue
-
-                                duration_seconds = entry.get("duration", 0)
-                                results.append(
-                                    {
-                                        "id": entry.get("id", ""),
-                                        "title": entry.get("title", "Unknown Title"),
-                                        "url": entry.get(
-                                            "webpage_url",
-                                            f"https://www.youtube.com/watch?v={entry.get('id', '')}",
-                                        ),
-                                        "thumbnail": entry.get("thumbnail", ""),
-                                        "duration": str(
-                                            timedelta(seconds=duration_seconds)
-                                        ),
-                                        "author": entry.get("uploader", "Unknown"),
-                                    }
-                                )
-
-                    self.results_signal.emit(results)  # Send results to main thread
-
-        except Exception as e:
-            self.error_signal.emit(
-                f"Search error: {str(e)}"
-            )  # Send error to main thread
-
-    def _search(self, ydl, query):
-        """Performs the search request."""
-        return ydl.extract_info(query, download=False)
+from ui.download_thread import DownloadThread
+from ui.youtube_search_worker import YouTubeSearchWorker
 
 
 class MainWindow(QMainWindow):
@@ -144,8 +32,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("YouTube Video Downloader")
         self.setMinimumSize(800, 600)
 
-        # Initialize YouTube API
-        self.youtube_api = YouTubeAPI()
+        # Load user settings
+        self.settings_file = os.path.join(os.path.expanduser("~"), ".yt_downloader_settings.json")
+        self.load_settings()
 
         # Create main widget and layout
         self.central_widget = QWidget()
@@ -155,8 +44,38 @@ class MainWindow(QMainWindow):
         # Set up UI
         self.setup_ui()
 
-        # Apply dark theme
-        self.apply_dark_theme()
+        # Apply theme based on saved settings
+        self.dark_mode.setChecked(self.settings.get("dark_mode", True))
+        if self.settings.get("dark_mode", True):
+            self.apply_dark_theme()
+        else:
+            self.apply_light_theme()
+
+    def load_settings(self):
+        """Load user settings from file"""
+        try:
+            if os.path.exists(self.settings_file):
+                with open(self.settings_file, 'r') as f:
+                    self.settings = json.load(f)
+            else:
+                self.settings = {
+                    "save_path": os.path.expanduser("~/Downloads"),
+                    "dark_mode": True
+                }
+        except Exception as e:
+            print(f"Error loading settings: {str(e)}")
+            self.settings = {
+                "save_path": os.path.expanduser("~/Downloads"),
+                "dark_mode": True
+            }
+
+    def save_settings(self):
+        """Save user settings to file"""
+        try:
+            with open(self.settings_file, 'w') as f:
+                json.dump(self.settings, f)
+        except Exception as e:
+            print(f"Error saving settings: {str(e)}")
 
     def setup_ui(self):
         # Search/URL section
@@ -194,8 +113,8 @@ class MainWindow(QMainWindow):
         self.audio_only = QCheckBox("Download audio only")
         options_layout.addWidget(self.audio_only)
 
-        # Save location
-        self.save_path = os.path.expanduser("~/Downloads")
+        # Save location - use saved path from settings
+        self.save_path = self.settings.get("save_path", os.path.expanduser("~/Downloads"))
         self.path_label = QLabel(f"Save to: {self.save_path}")
         self.browse_button = QPushButton("Browse...")
         self.browse_button.clicked.connect(self.select_save_path)
@@ -225,7 +144,6 @@ class MainWindow(QMainWindow):
         # Dark/light mode
         theme_layout = QHBoxLayout()
         self.dark_mode = QCheckBox("Dark mode")
-        self.dark_mode.setChecked(True)
         self.dark_mode.stateChanged.connect(self.toggle_theme)
         theme_layout.addStretch()
         theme_layout.addWidget(self.dark_mode)
@@ -343,10 +261,31 @@ class MainWindow(QMainWindow):
         )
 
     def toggle_theme(self, state):
-        if state == Qt.CheckState.Checked:
+        print(f"Toggle Theme Called. State: {state}")  # Debugging output
+        
+        if self.dark_mode.isChecked():  # Check actual checkbox state
+            print("Applying Dark Theme")
             self.apply_dark_theme()
+            self.settings["dark_mode"] = True
         else:
+            print("Applying Light Theme")
             self.apply_light_theme()
+            self.settings["dark_mode"] = False
+
+        # Save theme preference
+        self.save_settings()
+
+        # 🛠️ Force UI refresh to apply new styles
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet("")  # Reset styles
+            app.setStyleSheet(self.styleSheet())  # Apply new styles
+
+        self.central_widget.update()
+        self.repaint()
+
+
+
 
     def search_videos(self):
         query = self.url_input.text().strip()
@@ -400,6 +339,10 @@ class MainWindow(QMainWindow):
         if path:
             self.save_path = path
             self.path_label.setText(f"Save to: {self.save_path}")
+            
+            # Save the new path in settings
+            self.settings["save_path"] = path
+            self.save_settings()
 
     def start_download(self):
         if not hasattr(self, "selected_video"):
@@ -439,3 +382,4 @@ class MainWindow(QMainWindow):
         self.status_label.setText(error_message)
         self.download_button.setEnabled(True)
         QMessageBox.critical(self, "Error", error_message)
+
