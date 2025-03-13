@@ -1,6 +1,5 @@
 import os
-from pytube import YouTube
-import time
+import yt_dlp
 
 class VideoDownloader:
     def __init__(self):
@@ -8,63 +7,51 @@ class VideoDownloader:
     
     def download(self, url, quality, save_path, progress_callback=None):
         """
-        Tải một video YouTube với chất lượng được chỉ định
+        Download a YouTube video with the specified quality.
         
         Args:
-            url (str): URL của video YouTube
-            quality (str): Chất lượng của video (720p, 1080p, 1440p, 2160p)
-            save_path (str): Đường dẫn để lưu video
-            progress_callback (function): Hàm callback nhận giá trị % tiến trình
+            url (str): YouTube video URL
+            quality (str): Video quality (720p, 1080p, etc.)
+            save_path (str): Path to save the video
+            progress_callback (function): Callback function for progress updates
         
         Returns:
-            str: Đường dẫn đến tệp đã tải
+            str: Path to the downloaded file
         """
-        yt = YouTube(url)
-        
-        # Đăng ký hàm callback tiến trình
-        if progress_callback:
-            def on_progress(stream, chunk, bytes_remaining):
-                total_size = stream.filesize
-                bytes_downloaded = total_size - bytes_remaining
-                percent = int(bytes_downloaded * 100 / total_size)
-                progress_callback(percent)
-            
-            yt.register_on_progress_callback(on_progress)
-        
-        # Chọn stream phù hợp với chất lượng yêu cầu
-        resolution_map = {
-            "720p": "720p",
-            "1080p": "1080p",
-            "1440p": "1440p", 
-            "2160p": "2160p"
-        }
-        
-        target_res = resolution_map.get(quality, "720p")
-        
-        # Tìm stream phù hợp
-        stream = None
-        
-        # Trước tiên, thử tìm stream với cả video và audio
         try:
-            stream = yt.streams.filter(progressive=True, res=target_res).first()
-        except Exception:
-            pass
-            
-        # Nếu không có progressive stream, thử tìm only video stream
-        if not stream:
-            try:
-                stream = yt.streams.filter(adaptive=True, res=target_res).first()
-            except Exception:
-                pass
+            # Configure yt-dlp options
+            ydl_opts = {
+                'format': f'bestvideo[height<={quality}]+bestaudio/best',  # Get the best video with the given quality
+                'outtmpl': os.path.join(save_path, '%(title)s.%(ext)s'),  # Save as title of the video
+                'progress_hooks': [self._progress_hook(progress_callback)] if progress_callback else [],
+            }
+
+            # Ensure save path exists
+            os.makedirs(save_path, exist_ok=True)
+
+            # Download the video using yt-dlp
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                result = ydl.download([url])
+
+            # Check if download was successful (result is an integer; 0 means success)
+            if result == 0:
+                return os.path.join(save_path, f'{ydl.prepare_filename(ydl.extract_info(url))}')
+            else:
+                raise Exception(f"Error downloading video: Download failed with status code {result}")
+
+        except Exception as e:
+            print(f"Error downloading video: {e}")
+            return None
+
+    def _progress_hook(self, progress_callback):
+        """
+        Creates a progress hook for yt-dlp's download process.
+        Args:
+            progress_callback (function): Callback function to update progress.
+        """
+        def progress_hook(d):
+            if d['status'] == 'downloading':
+                percent = int(d['downloaded_bytes'] * 100 / d['total_bytes'])
+                progress_callback(percent)
         
-        # Nếu vẫn không tìm thấy, lấy stream có độ phân giải cao nhất
-        if not stream:
-            stream = yt.streams.get_highest_resolution()
-        
-        if not stream:
-            raise Exception(f"Không tìm thấy stream với chất lượng {quality}")
-        
-        # Tải video xuống
-        file_path = stream.download(output_path=save_path)
-        
-        return file_path
+        return progress_hook

@@ -1,3 +1,4 @@
 PyQt6
 pytube
 requests
+yt_dlp

@@ -6,17 +6,17 @@ class YouTubeAPI:
         pass
     
     def format_duration(self, seconds):
-        """Convert seconds to mm:ss or hh:mm:ss format"""
+        """Convert seconds to hh:mm:ss or mm:ss format"""
         return str(timedelta(seconds=seconds))
-    
+
     def search(self, query, max_results=10):
         """
         Search for YouTube videos
-        
+
         Args:
             query (str): Search keyword
             max_results (int): Maximum number of results
-            
+
         Returns:
             list: List of videos (dict) with basic information
         """
@@ -25,51 +25,44 @@ class YouTubeAPI:
                 'quiet': True,
                 'no_warnings': True,
                 'skip_download': True,
-                'extract_flat': True,
-                'force_generic_extractor': False,
+                'noplaylist': True,  # Ensure single video results
             }
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # Using ytsearch prefix to search YouTube
+                # Using ytsearch to get multiple results
                 search_query = f"ytsearch{max_results}:{query}"
                 info = ydl.extract_info(search_query, download=False)
                 
                 results = []
                 if 'entries' in info:
                     for entry in info['entries']:
-                        try:
-                            # Get more detailed information for each video
-                            video_info = ydl.extract_info(
-                                f"https://www.youtube.com/watch?v={entry['id']}", 
-                                download=False
-                            )
-                            
-                            duration_seconds = video_info.get('duration', 0)
-                            
-                            results.append({
-                                'id': entry.get('id', ''),
-                                'title': entry.get('title', 'Unknown Title'),
-                                'url': f"https://www.youtube.com/watch?v={entry.get('id', '')}",
-                                'thumbnail': f"https://img.youtube.com/vi/{entry.get('id', '')}/mqdefault.jpg",
-                                'duration': self.format_duration(duration_seconds),
-                                'author': video_info.get('uploader', 'Unknown')
-                            })
-                        except Exception:
+                        if not entry:  # Skip empty results
                             continue
+                        
+                        duration_seconds = entry.get('duration', 0)
+                        
+                        results.append({
+                            'id': entry.get('id', ''),
+                            'title': entry.get('title', 'Unknown Title'),
+                            'url': entry.get('webpage_url', f"https://www.youtube.com/watch?v={entry.get('id', '')}"),
+                            'thumbnail': entry.get('thumbnail', ''),
+                            'duration': self.format_duration(duration_seconds),
+                            'author': entry.get('uploader', 'Unknown')
+                        })
                             
                 return results
         except Exception as e:
-            raise Exception(f"Search error: {str(e)}")
-    
+            return {"error": f"Search error: {str(e)}"}
+
     def get_video_info(self, url):
         """
-        Get information about a video from its URL
-        
+        Get detailed information about a YouTube video.
+
         Args:
             url (str): YouTube video URL
-            
+
         Returns:
-            dict: Video information
+            dict: Video metadata
         """
         try:
             ydl_opts = {
@@ -81,15 +74,18 @@ class YouTubeAPI:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
                 
+                if not info:
+                    return {"error": "Video not found or private."}
+
                 duration_seconds = info.get('duration', 0)
                 
                 return {
                     'id': info.get('id', ''),
                     'title': info.get('title', 'Unknown Title'),
-                    'url': url,
+                    'url': info.get('webpage_url', url),
                     'thumbnail': info.get('thumbnail', ''),
                     'duration': self.format_duration(duration_seconds),
                     'author': info.get('uploader', 'Unknown')
                 }
         except Exception as e:
-            raise Exception(f"Error getting video information: {str(e)}")
+            return {"error": f"Error getting video information: {str(e)}"}

@@ -1,3 +1,4 @@
+from datetime import timedelta
 import os
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLineEdit, QPushButton, QLabel, QComboBox, 
@@ -7,10 +8,10 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QPixmap
 import sys
 
+import yt_dlp
+
 from core.downloader import VideoDownloader
 from core.youtube_api import YouTubeAPI
-
-
 
 class DownloadThread(QThread):
     progress_signal = pyqtSignal(int)
@@ -36,7 +37,49 @@ class DownloadThread(QThread):
         except Exception as e:
             self.error_signal.emit(f"Lỗi: {str(e)}")
 
+class YouTubeSearchWorker(QThread):
+    results_signal = pyqtSignal(list)  # Signal to return results
+    error_signal = pyqtSignal(str)  # Signal for errors
 
+    def __init__(self, query, max_results=10):
+        super().__init__()
+        self.query = query
+        self.max_results = max_results
+
+    def run(self):
+        """Runs in a separate thread to avoid blocking the GUI."""
+        try:
+            ydl_opts = {
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': True,
+                'noplaylist': True,
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                search_query = f"ytsearch{self.max_results}:{self.query}"
+                info = ydl.extract_info(search_query, download=False)
+                
+                results = []
+                if 'entries' in info:
+                    for entry in info['entries']:
+                        if not entry:
+                            continue
+                        
+                        duration_seconds = entry.get('duration', 0)
+                        
+                        results.append({
+                            'id': entry.get('id', ''),
+                            'title': entry.get('title', 'Unknown Title'),
+                            'url': entry.get('webpage_url', f"https://www.youtube.com/watch?v={entry.get('id', '')}"),
+                            'thumbnail': entry.get('thumbnail', ''),
+                            'duration': str(timedelta(seconds=duration_seconds)),
+                            'author': entry.get('uploader', 'Unknown')
+                        })
+                
+                self.results_signal.emit(results)  # Send results to main thread
+        except Exception as e:
+            self.error_signal.emit(f"Search error: {str(e)}")  # Send error to main thread
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -248,46 +291,48 @@ class MainWindow(QMainWindow):
         query = self.url_input.text().strip()
         if not query:
             return
-            
+
         self.results_list.clear()
-        self.status_label.setText("Searching...")
-        
-        # Check if this is a URL or search keyword
-        if "youtube.com" in query or "youtu.be" in query:
-            # This is a URL
-            try:
-                video_info = self.youtube_api.get_video_info(query)
-                if video_info:
-                    item = QListWidgetItem(f"{video_info['title']} ({video_info['duration']})")
-                    item.setData(Qt.ItemDataRole.UserRole, video_info)
-                    self.results_list.addItem(item)
-                    self.status_label.setText("Found 1 video")
-                else:
-                    self.status_label.setText("Could not retrieve video information")
-            except Exception as e:
-                self.status_label.setText(f"Error: {str(e)}")
-                print(f"URL processing error: {str(e)}")  # Debug output
-        else:
-            # This is a search keyword
-            try:
-                results = self.youtube_api.search(query)
-                if results and len(results) > 0:
-                    for video in results:
-                        item = QListWidgetItem(f"{video['title']} ({video['duration']})")
-                        item.setData(Qt.ItemDataRole.UserRole, video)
-                        self.results_list.addItem(item)
-                    self.status_label.setText(f"Found {len(results)} videos")
-                else:
-                    self.status_label.setText("No videos found")
-            except Exception as e:
-                self.status_label.setText(f"Error: {str(e)}")
-                print(f"Search error: {str(e)}")  # Debug output
+        self.status_label.setText("Đang tìm kiếm...")
+
+        # Create a worker thread for YouTube search
+        self.worker = YouTubeSearchWorker(query, max_results=5)
+        self.worker.results_signal.connect(self.display_results)
+        self.worker.error_signal.connect(self.display_error)
+        self.worker.start()  # Start the thread
+
     
+    def display_results(self, results):
+        """Displays the search results in the GUI."""
+        self.status_label.setText("Tìm kiếm hoàn tất!")
+        self.results_list.clear()
+
+        if not results:
+            self.status_label.setText("Không tìm thấy video nào.")
+            return
+
+        for video in results:
+            item = QListWidgetItem(f"{video['title']} ({video['duration']})")
+            item.setData(Qt.ItemDataRole.UserRole, video)
+            self.results_list.addItem(item)
+
+
+    def display_error(self, error_message):
+        """Displays an error message if the search fails."""
+        self.status_label.setText(f"Error: {error_message}")
+        
     def select_video(self, item):
+        """Handles when a user selects a video from the search results."""
         video_info = item.data(Qt.ItemDataRole.UserRole)
+          
+
+        if not video_info:
+            return
+
         self.video_info.setText(f"Đã chọn: {video_info['title']} ({video_info['duration']})")
         self.download_button.setEnabled(True)
         self.selected_video = video_info
+
     
     def select_save_path(self):
         path = QFileDialog.getExistingDirectory(
