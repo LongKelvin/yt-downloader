@@ -1,18 +1,18 @@
+# helper/search_worker.py
 from datetime import timedelta
 from PyQt6.QtCore import QThread, pyqtSignal
 import yt_dlp
+from concurrent.futures import ThreadPoolExecutor
 
-class YouTubeSearchWorker(QThread):
+class SearchWorker(QThread):  # Renamed
     results_signal = pyqtSignal(list)
     error_signal = pyqtSignal(str)
 
-    def __init__(self, query, max_results=5, parallel_searches=5, batch_size=5):
+    def __init__(self, query, max_results=5):
         super().__init__()
         self.query = query
         self.max_results = max_results
-        # No longer needed:
-        # self.parallel_searches = parallel_searches
-        # self.batch_size = batch_size
+        self.executor = ThreadPoolExecutor(max_workers=3)  # Bounded parallelism
 
     def run(self):
         try:
@@ -21,24 +21,23 @@ class YouTubeSearchWorker(QThread):
                 "no_warnings": True,
                 "skip_download": True,
                 "noplaylist": True,
-                # Removed "extract_flat": True,  Get full info (including formats)
+                'extract_flat': 'in_playlist', # Optimize yt-dlp options
                 "default_search": "ytsearch",
             }
 
             search_query = f"ytsearch{self.max_results}:{self.query}"
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                # No ThreadPoolExecutor needed here
-                info = ydl.extract_info(search_query, download=False)
+                future = self.executor.submit(ydl.extract_info, search_query, download=False)
+                info = future.result() # wait to finish
                 results = []
 
                 if "entries" in info:
                     for entry in info["entries"]:
                         if not entry:
                             continue
-
-                        duration_seconds = entry.get("duration", 0)
-                        # Important: Include 'formats' in the result
+                        # Handle cases where duration might be None
+                        duration_seconds = entry.get("duration") or 0
                         results.append(
                             {
                                 "id": entry.get("id", ""),
@@ -50,7 +49,7 @@ class YouTubeSearchWorker(QThread):
                                 "thumbnail": entry.get("thumbnail", ""),
                                 "duration": str(timedelta(seconds=duration_seconds)),
                                 "author": entry.get("uploader", "Unknown"),
-                                "formats": entry.get("formats", []),  # Include formats
+                                "formats": entry.get("formats", []),
                             }
                         )
 
@@ -58,3 +57,5 @@ class YouTubeSearchWorker(QThread):
 
         except Exception as e:
             self.error_signal.emit(f"Search error: {str(e)}")
+        finally:
+            self.executor.shutdown()
