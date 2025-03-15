@@ -1,100 +1,196 @@
-## Developer Documentation (v0.2)
 
-This section provides information for developers who want to understand, modify, or contribute to the YouTube Downloader application.
+## Youtube Downloader - Developer Documentation v0.2
 
-### 1. Project Structure
+This section provides information for developers who want to understand, modify, or contribute to the refactored YouTube Downloader application.
 
-The application consists of the following files:
+### 1. Project Structure (Refactored)
 
-*   **`main.py`:**  The main entry point of the application.  Creates the `MainWindow` and starts the Qt event loop.
-*   **`ui/main_window.py`:**  Defines the `MainWindow` class, which handles the user interface and application logic.
-*   **`ui/download_thread.py`:**  Defines the `DownloadThread` class, responsible for downloading videos in a separate thread.
-*   **`ui/youtube_search_worker.py`:** Defines the `YouTubeSearchWorker` class, which performs YouTube searches in a separate thread.
-*   **`core/downloader.py`:** Defines the `VideoDownloader` class, which uses `yt_dlp` to download videos.
-*   **`requirements.txt`:**  Lists the required Python packages.
+The application is now organized into the following packages and modules:
+```
+yt_downloader/  
+├── core/  
+│ └── downloader.py (VideoDownloader - Handles video downloading via yt_dlp)  
+├── ui/  
+│ ├── **init**.py (Makes 'ui' a package)  
+│ ├── about_window.py (AboutDialog - Displays application information)  
+│ ├── download_thread.py (DownloadThread - Downloads videos in a separate thread)  
+│ ├── main_window.py (Minimal - creates AppController and UIManager, starts event loop)  
+│ ├── ui_manager.py (UIManager - Manages all UI elements and interactions)  
+│ ├── search_controller.py (SearchController - Manages search logic and caching)  
+│ ├── download_controller.py (DownloadController - Manages download logic)  
+│ ├── settings_manager.py (SettingsManager - Manages application settings)  
+│ └── file_controller.py (FileController - Manages file operations)  
+├── helper/  
+│ ├── **init**.py (Makes 'helper' a package)  
+│ ├── search_worker.py (SearchWorker - Performs YouTube searches in a thread)  
+│ └── file_opener_thread.py (FileOpenerThread - Opens files in a separate thread)  
+├── docs/
+│ ├── developer_documentation_v0.2.md  
+│ ├── yt_downloader_dev_documentation_v0.2.pdf  
+│ └── yt_downloader_user_guide.pdf
+├── requirements.txt (Lists required Python packages
+└── main.py (Bootstraps the application, connects components)  
+```
 
 ### 2. Dependencies
 
-*   **PyQt6:**  The GUI framework.
-*   **requests:** (Not explicitly used in the final code, but often useful for web-related tasks).
-*   **yt_dlp:**  The core library for downloading videos from YouTube and other sites.
-*   **qtawesome:**  Provides Font Awesome icons for the UI.
+*   **PyQt6:** The GUI framework.
+*   **requests:** (Not directly used, but often useful for web tasks)
+*   **yt_dlp:** The core library for downloading videos.
+*   **qtawesome:** Provides Font Awesome icons.
 
 ### 3. Code Overview
 
 #### 3.1. `main.py`
 
-*   Creates the `QApplication` instance.
-*   Initializes and shows the `MainWindow`.
-*   Starts the Qt event loop.
+*   **Responsibility:** Application entry point.  Bootstraps the application.
+*   **Functionality:**
+    *   Creates instances of `SettingsManager`, `UIManager`, `SearchController`, `DownloadController`, `FileController` and `AppController`.
+    *   Connects signals and slots between these objects to establish the application's workflow.
+    *   Starts the Qt event loop.
+    *  Creates a `QMainWindow` and sets a `UIManager` instance as central widget
 
-#### 3.2. `ui/main_window.py`
+#### 3.2. `core/downloader.py` - `VideoDownloader`
 
-*   **`MainWindow` Class:**
-    *   `__init__`: Sets up the UI (creates widgets, layouts, connects signals).  Loads user settings.
-    *   `load_settings`, `save_settings`:  Manages user preferences (save path, dark mode).
-    *   `setup_ui`:  Creates all the UI elements.
-    *   `setup_menu_bar`: Sets up the Help and About menus.
-    *   `open_help`, `show_about`:  Handles actions from the menu bar.
-    *   `apply_dark_theme`, `apply_light_theme`, `toggle_theme`:  Manages the application's theme.
-    *   `search_videos`:  Starts the YouTube search process (creates a `YouTubeSearchWorker`).
-    *   `display_results`:  Displays the search results in the `QListWidget`.
-    *   `display_error`:  Displays search errors.
-    *   `select_video`:  Handles video selection from the list.  Populates the quality options.
-    *   `populate_quality_options`: Populates the quality `QComboBox`.
-    *   `select_save_path`:  Opens a file dialog to choose the download location.
-    *   `start_download`:  Starts the download process (creates a `DownloadThread`).
-    *   `cancel_download`:  Cancels the download.
-    *   `update_progress`:  Updates the progress bar.
-    *   `download_finished`, `download_error`:  Handles download completion or errors.
-    *   `search_cache`: Caches the search result to avoid re-search with same query.
+*   **Responsibility:** Handles the actual video downloading using `yt_dlp`.
+*   **Methods:**
+    *   `download(url, quality, save_path, progress_callback=None)`: Downloads a video.
+    *   `_progress_hook(progress_callback)`:  Internal helper for progress updates.
 
-#### 3.3. `ui/youtube_search_worker.py`
+#### 3.3. `ui/about_window.py` - `AboutDialog`
 
-*   **`YouTubeSearchWorker` Class:**
-    *   `__init__`:  Takes the search query and maximum results as input.
-    *   `run`:  Performs the YouTube search using `yt_dlp`.  Emits the `results_signal` with the search results or the `error_signal` if an error occurs.
-    *   Uses a `ThreadPoolExecutor` for bounded parallelism to improve search speed.
+*   **Responsibility:** Displays "About" information (author, GitHub link, etc.).
 
-#### 3.4. `ui/download_thread.py`
+#### 3.4. `ui/download_thread.py` - `DownloadThread`
 
-*   **`DownloadThread` Class:**
-    *   `__init__`: Takes the video URL, quality, and save path as input.
-    *   `run`:  Downloads the video using the `VideoDownloader` class.  Emits `progress_signal` updates, `finished_signal` on completion, or `error_signal` on failure.
+*   **Responsibility:** Performs video downloads in a separate thread to prevent UI freezing.
+*   **Signals:**
+    *   `progress_signal(int)`: Emits download progress updates.
+    *   `finished_signal(str)`: Emits a message on successful completion.
+    *   `error_signal(str)`: Emits an error message on failure.
 
-#### 3.5. `core/downloader.py`
+#### 3.5. `helper/search_worker.py` - `SearchWorker`
 
-*   **`VideoDownloader` Class:**
-    *   `download`:  Downloads the video using `yt_dlp` with the specified options (quality, output path, etc.).
-    *   `_progress_hook`:  A helper function to handle progress updates from `yt_dlp`.
+*   **Responsibility:** Performs YouTube searches in a separate thread.
+*   **Signals:**
+    *   `results_signal(list)`: Emits search results.
+    *   `error_signal(str)`: Emits an error message.
 
-### 4. Key Concepts
+#### 3.6. `helper/file_opener_thread.py` - `FileOpenerThread`
 
-*   **Threading:**  `YouTubeSearchWorker` and `DownloadThread` use separate threads to prevent the UI from freezing during long-running operations (searching and downloading).
-*   **Signals and Slots:** PyQt's signal and slot mechanism is used for communication between threads and the main UI thread.  For example, the `results_signal` from `YouTubeSearchWorker` is connected to the `display_results` slot in `MainWindow`.
-*   **`yt_dlp` Options:**  The code uses various `yt_dlp` options to control the download process:
-    *   `quiet`, `no_warnings`:  Suppress unnecessary output.
-    *   `skip_download`:  Used during the search to get video information without downloading.
-    *   `noplaylist`:  Ignores playlists.
-    *   `default_search`:  Specifies the search method.
-    *   `format`:  Selects the desired video and audio formats.
-    *   `merge_output_format`:  Ensures the output is in MP4 format.
-    *   `outtmpl`:  Specifies the output file name template.
-    *   `progress_hooks`:  Allows for monitoring the download progress.
-*   **Caching:** The `search_cache` in `MainWindow` caches search results to improve performance for repeated searches.
-* **Settings:** Settings file located in user home directory.
+* **Responsibility:** Open file in a seperate thread.
+* **Signals:**
+ * `finished`: Emits signal for finish opening.
+ * `error`: Emits signal for error.
 
+#### 3.7. `ui/settings_manager.py` - `SettingsManager`
 
+*   **Responsibility:** Manages loading, saving, and accessing application settings.
+*   **Methods:**
+    *   `load_settings()`: Loads settings from a JSON file.
+    *   `save_settings()`: Saves settings to a JSON file.
+    *   `get_setting(key, default=None)`: Retrieves a setting value.
+    *   `set_setting(key, value)`: Sets a setting value.
 
-### 5. GitHub Repository
+#### 3.8. `ui/ui_manager.py` - `UIManager`
+
+*   **Responsibility:**  Manages *all* aspects of the user interface.
+*   **Methods:**
+    *   `setup_ui()`: Creates and arranges all UI elements (widgets, layouts).
+    *   `set_dark_mode(is_dark_mode)`: Applies the dark or light theme.
+    *   `display_results(results)`: Displays search results in the list.
+    *   `clear_results()`: Clears the results list.
+    *   `set_status_message(message)`: Sets the text of the status label.
+    *   `set_progress_value(value)`: Sets the value of the progress bar.
+    *   `set_save_path(path)`: Updates the displayed save path.
+    *   `populate_quality_combo(video_info)`: Populates the quality options.
+    *   `show_message(title, message)`: show message dialog
+    *   `show_error(title, message)`: show error dialog
+    *   `update_quality_options`: Updates enable/disable option quality.
+    *   Event handler methods (e.g., `on_search_clicked`, `on_download_clicked`):  These methods emit signals corresponding to user actions. They do *not* contain the application logic itself.
+*   **Signals:**
+    *   `search_requested(str)`:  Emitted when the user clicks "Search".
+    *   `download_requested(str, str, str)`: Emitted when the user clicks "Download".
+    *   `cancel_requested()`: Emitted when the user clicks "Cancel".
+    *   `path_browse_requested()`: Emitted when the user clicks "Browse...".
+    *   `theme_change_requested(bool)`: Emitted when the user toggles the dark mode checkbox.
+    *   `help_user_requested`: Emitted when the user request to view help user doc.
+    *  `help_dev_requested`: Emitted when the user request to view help dev doc.
+    *  `about_requested`: Emitted when the user request to view about dialog.
+* **Important:** This class handles UI *events* and updates the UI *state*, but it does *not* contain application logic (searching, downloading, etc.).  It interacts with the `AppController` via signals and slots.
+
+#### 3.9. `ui/search_controller.py` - `SearchController`
+
+*   **Responsibility:** Manages the YouTube search process.
+*   **Methods:**
+    *   `search(query)`: Starts a search using `SearchWorker`.
+    *   `handle_results(results)`: Handles results from `SearchWorker`.
+    *   `handle_error(error_message)`: Handles errors from `SearchWorker`.
+*   **Signals:**
+    *   `search_results_ready(list)`: Emits search results.
+    *   `search_error(str)`: Emits an error message.
+*   **Internal:** Uses a `search_cache` to store search results.
+
+#### 3.10. `ui/download_controller.py` - `DownloadController`
+
+*   **Responsibility:** Manages the video download process.
+*   **Methods:**
+    *   `download(url, quality, save_path)`: Starts a download using `DownloadThread`.
+    *   `cancel_download()`: Cancels the current download.
+*   **Signals:**
+    *   `download_progress(int)`: Emits download progress updates.
+    *   `download_finished(str)`: Emits a message on successful completion.
+    *   `download_error(str)`: Emits an error message.
+
+#### 3.11 `ui/file_controller.py` - `FileController`
+*  **Responsibility**: Manages file operations.
+* **Methods**:
+  *  `open_file`: Opens a file specified by the file using a separate thread.
+* **Signals:**
+  * `file_opened`: Emits open file success.
+  * `file_open_error`: Emits an error message.
+
+#### 3.12. `AppController` (in `main.py`)
+
+*   **Responsibility:**  Coordinates the entire application.  Acts as a mediator between the UI, search, download, file and settings components.
+*   **Methods:**
+    * Slots connected to signals from `UIManager`, `SearchController`, `DownloadController`, and `FileController`. These slots contain the *application logic*.
+    *   `start()`: Initializes any necessary state.
+    *  `on_item_selected`: populate quality option when item select
+    * `set_dark_mode`: set dark mode.
+    * `browse_for_path`: browse path to save file.
+    *  `start_download`: start download
+    * `show_about_dialog`: show about dialog.
+
+### 4. Key Concepts (Refactored)
+
+*   **Separation of Concerns:**  Each class has a single, well-defined responsibility.
+*   **Model-View-Controller (MVC) Variant:**  The architecture loosely follows the MVC pattern:
+    *   **Model:** `SettingsManager`, `SearchWorker`, `DownloadThread`, and the data they manage.
+    *   **View:** `UIManager` (and `AboutDialog`).
+    *   **Controller:** `AppController`, `SearchController`, `DownloadController`, `FileController`.
+*   **Signal/Slot Mechanism:**  Used extensively for communication between objects, especially between threads and the UI.
+*   **Threading:** `SearchWorker` and `DownloadThread` run in separate threads to prevent UI freezes.
+*   **Caching:** `SearchController` caches search results to improve performance.
+
+### 5. Potential Improvements
+
+*   **Asynchronous yt_dlp:**  Explore using `yt_dlp`'s asynchronous API (with `asyncio`) for potentially better performance.
+*   **More Detailed Error Handling:** Provide more specific error messages and handling for various `yt_dlp` exceptions.
+*   **Configuration File:** Allow users to customize more settings via a configuration file.
+*   **Playlist Downloading:** Add support for downloading entire YouTube playlists.
+*   **Download Resumption:** Implement the ability to resume interrupted downloads.
+*   **Testing:** Add unit tests and integration tests to ensure code quality and prevent regressions.
+
+### 6. GitHub Repository
 
 The source code for this project is available on GitHub: [https://github.com/LongKelvin/yt-downloader](https://github.com/LongKelvin/yt-downloader)
 
 A pre-built, portable `.exe` version of the application can be found on the releases page: [https://github.com/LongKelvin/yt-downloader/releases/tag/v0.1](https://github.com/LongKelvin/yt-downloader/releases/tag/v0.1)
 
-### 6. Building a Portable Executable (.exe)
+### 7. Building a Portable Executable (.exe)
 
-If you modify the code and want to create a new `.exe` file, you can use PyInstaller.
+(Instructions remain the same as before - using PyInstaller)
 
 1.  **Install PyInstaller:**
     ```bash
@@ -115,8 +211,6 @@ If you modify the code and want to create a new `.exe` file, you can use PyInsta
 3.  **Find the Executable:** After the build process completes, the `.exe` file will be located in the `dist` folder (which PyInstaller creates).
 
 4. **Copy `user_guide.pdf`:** Copy the `user_guide.pdf` to the `dist` folder so it's in same directory with the executable file.
-
-This command creates a single, self-contained executable that includes all the necessary dependencies.  Users can run this `.exe` without needing to install Python or any libraries.
 
 ## Author and Project Information
 
