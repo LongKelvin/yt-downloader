@@ -1,4 +1,5 @@
 # ui/ui_manager.py
+import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel,
     QComboBox, QFileDialog, QProgressBar, QListWidget, QListWidgetItem,
@@ -9,13 +10,14 @@ import qtawesome as qta
 
 class UIManager(QWidget):
     search_requested = pyqtSignal(str)
-    download_requested = pyqtSignal(str, str, str)  # url, quality, save_path
+    download_requested = pyqtSignal(str, str)  # url, quality
     cancel_requested = pyqtSignal()
     path_browse_requested = pyqtSignal()
     theme_change_requested = pyqtSignal(bool) # is_dark_mode
     help_user_requested =  pyqtSignal()
     help_dev_requested =  pyqtSignal()
     about_requested = pyqtSignal()
+    system_exit_requested = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -129,7 +131,6 @@ class UIManager(QWidget):
         # Help Menu
         
         help_menu = QMenu("&Help", self)
-
         help_action_user = help_menu.addAction(qta.icon("fa5s.question-circle"), "&User Guide")
         help_action_user.triggered.connect(self.help_user_requested)
 
@@ -141,11 +142,16 @@ class UIManager(QWidget):
         about_action = about_menu.addAction(qta.icon("fa5s.info-circle"), "&Software Information")
         about_action.triggered.connect(self.about_requested)
 
-
+        # System Menu
+        system_menu = QMenu("&System", self)
+        system_action_exit = system_menu.addAction(qta.icon("fa5s.sign-out-alt"), "&Exit application")
+        system_action_exit.triggered.connect(self.system_exit_requested)
+        
+        self.menu_bar.addMenu(system_menu)
         self.menu_bar.addMenu(help_menu)
         self.menu_bar.addMenu(about_menu)
-     
-
+        
+        
     def on_search_clicked(self):
         query = self.url_input.text().strip()
         if query:  # Only emit if there's a query
@@ -154,8 +160,7 @@ class UIManager(QWidget):
         
 
     def on_download_clicked(self):
-        # No download logic here, just emit the signal
-    
+        """Emits download request signal with user-selected video info."""
         selected_item = self.results_list.currentItem()
         if selected_item:
             video_info = selected_item.data(Qt.ItemDataRole.UserRole)
@@ -163,8 +168,9 @@ class UIManager(QWidget):
             quality = self.quality_combo.currentText()
             if self.audio_only.isChecked():
                 quality = "bestaudio"
-            save_path = self.path_label.text().replace("Save to: ", "").strip() # Extract path
-            self.download_requested.emit(url, quality, save_path)
+
+            self.download_requested.emit(url, quality)  # Emit only URL & Quality
+
 
     def on_theme_change_requested(self, state):
         is_dark_mode = state == Qt.CheckState.Checked.value
