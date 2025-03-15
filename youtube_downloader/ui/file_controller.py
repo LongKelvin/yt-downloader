@@ -19,3 +19,4 @@ class FileController(QObject):
             self.thread.start()
         else:
             self.file_open_error.emit(f"File not found: {file_path}")
+            
