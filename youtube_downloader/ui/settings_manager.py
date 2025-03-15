@@ -17,7 +17,7 @@ class SettingsManager:
         if not os.path.exists(self.settings_file):
             print("DEBUG: Settings file missing, creating default settings...")
             self._set_defaults()
-            self.save_settings()
+            # self.save_settings()
         else:
             self.load_settings()
 
