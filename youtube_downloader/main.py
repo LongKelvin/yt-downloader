@@ -1,4 +1,5 @@
 # main.py
+import json
 import os
 import sys
 from PyQt6.QtWidgets import QApplication, QMainWindow, QFileDialog
@@ -24,18 +25,30 @@ class AppController(QObject):
 
         # Load settings
         self.settings_manager.load_settings()
+        if self.settings_manager.get_setting("storage.download_directory") == "":
+            self.settings_manager.set_setting("storage.download_directory", os.path.expanduser("~/Downloads"))
+
 
         # Apply settings to UI
         self.ui_manager.set_save_path(self.settings_manager.get_setting("storage.download_directory"))
         self.ui_manager.set_dark_mode(self.settings_manager.get_setting("ui.theme.dark_mode", True))  # Default True
         self.ui_manager.dark_mode_check.setChecked(self.settings_manager.get_setting("ui.theme.dark_mode", True))
         
-        # Get the base directory of the application
-        base_dir = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
+        # Get the base directory (handles both dev & PyInstaller builds)
+        self.base_dir = getattr(sys, '_MEIPASS', os.path.abspath(os.path.dirname(__file__)))
+        print("DEBUG: BASE DIR: ", self.base_dir)
 
         # Load file paths from settings
-        user_guide_path = os.path.join(base_dir, self.settings_manager.get_setting("documentation.user_guide"))
-        dev_guide_path = os.path.join(base_dir, self.settings_manager.get_setting("documentation.developer_guide"))
+        self.user_guide_path = self.get_absolute_path(self.settings_manager.get_setting("documentation.user_guide"))
+        self.dev_guide_path = self.get_absolute_path(self.settings_manager.get_setting("documentation.developer_guide"))
+
+        print("DEBUG: User Guide PDF File Path: ", self.user_guide_path)
+        print("DEBUG: Dev Documentation PDF File Path: ", self.dev_guide_path)
+        
+        all_settings = settings_manager.get_all_settings()
+        print(json.dumps(all_settings, indent=4))  # Debug output
+
+        
 
         # --- Connect Signals and Slots ---
         # UI -> Controller
@@ -43,8 +56,8 @@ class AppController(QObject):
         self.ui_manager.cancel_requested.connect(self.cancel_download)
         self.ui_manager.path_browse_requested.connect(self.browse_for_path)
         self.ui_manager.theme_change_requested.connect(self.set_dark_mode)
-        self.ui_manager.help_user_requested.connect(lambda: file_controller.open_file(user_guide_path))
-        self.ui_manager.help_dev_requested.connect(lambda: file_controller.open_file(dev_guide_path))
+        self.ui_manager.help_user_requested.connect(lambda: file_controller.open_file(self.user_guide_path))
+        self.ui_manager.help_dev_requested.connect(lambda: file_controller.open_file(self.dev_guide_path))
         self.ui_manager.about_requested.connect(self.show_about_dialog)
         self.ui_manager.system_exit_requested.connect(self.exit_application)
         
@@ -135,6 +148,19 @@ class AppController(QObject):
     def handle_search_results_ready(self, results):
         self.ui_manager.display_results(results)
         self.ui_manager.set_status_message("Ready")
+        
+    def get_absolute_path(self, relative_path):
+        """Ensure the path is absolute and correctly resolved."""
+        if not relative_path:
+            return None  # If no file is set in settings, return None
+
+        # Check if the path is already absolute (e.g., user manually set full path)
+        if os.path.isabs(relative_path):
+            return relative_path if os.path.exists(relative_path) else None
+
+        # If it's a relative path, ensure it's relative to base_dir
+        absolute_path = os.path.join(self.base_dir, relative_path)
+        return absolute_path if os.path.exists(absolute_path) else None
         
     def exit_application(self):
         QApplication.exit()

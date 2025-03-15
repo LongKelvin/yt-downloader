@@ -1,14 +1,14 @@
 {
     "storage": {
-        "download_directory": "D:/VideoLocationForApp"
+        "download_directory": ""
     },
     "documentation": {
-        "user_guide": "docs/yt_downloader_user_guide.pdf",
+        "user_guide": "docs/yt_downloader_user_guide_v0.2.pdf",
         "developer_guide": "docs/yt_downloader_dev_documentation_v0.2.pdf"
     },
     "ui": {
         "theme": {
-            "dark_mode": false
+            "dark_mode": true
         }
     }
 }
